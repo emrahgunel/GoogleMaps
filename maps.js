@@ -4,7 +4,7 @@ const debugBool = true;
 const debug = {
   log: (...strings) => debugBool && console.log(strings.join(" ")),
 };
-const xlsx = require('xlsx');
+const xlsx = require("xlsx");
 
 // Get the data
 async function getPageData(url, page) {
@@ -15,20 +15,26 @@ async function getPageData(url, page) {
     movingOn();
   }
 
-  //Shop Name
-  const shopName = (await page.$eval('[role="main"]', (element) => element.getAttribute("aria-label"))) || "No shop name provided";
+  const returnObj = await page.evaluate(() => ({
+    shop: document.querySelector('[role="main"]').getAttribute("aria-label")?.trim() || "No shop name provided",
+    address: document.querySelector('button[data-item-id="address"]')?.textContent.trim() || "Delivery service (No address)",
+    website: document.querySelector('[data-tooltip="Open website"]')?.textContent.trim() || "No website provided",
+  }));
 
-  //Shop Address
-  const address = (await page.$eval('button[data-item-id="address"]', (element) => element.innerText)) || "Delivery service (No address)";
+  //   //Shop Name
+  //   const shopName = (await page.$eval('[role="main"]', (element) => element?.getAttribute("aria-label"))) || "No shop name provided";
 
-  //Website
-  const website = (await page.$eval('[data-tooltip="Open website"]', (element) => element.innerText)) || "No website provided";
+  //   //Shop Address
+  //   const address = (await page.$eval('button[data-item-id="address"]', (element) => element?.innerText)) || "Delivery service (No address)";
 
-  const returnObj = {
-    shop: shopName?.trim(),
-    address: address?.trim(),
-    website: website?.trim(),
-  };
+  //   //Website
+  //   const website = (await page.$eval('[data-tooltip="Open website"]', (element) => element?.innerText)) || "No website provided";
+
+  //   const returnObj = {
+  //     shop: shopName?.trim(),
+  //     address: address?.trim(),
+  //     website: website?.trim(),
+  //   };
 
   console.log(returnObj);
 
@@ -41,8 +47,8 @@ async function getPageData(url, page) {
 async function getLinks(page) {
   // Scrolling to bottom of page
   let newScrollHeight = 0;
-  let scrollHeight = 1000;
   let divSelector = "[role='main'] > div:nth-child(2) > div";
+  let scrollHeight = await page.evaluate(`document.querySelector("${divSelector}").scrollHeight`);
 
   debug.log("Waiting for the page to load in");
   await page.waitForTimeout(defaultDelay * 11);
@@ -57,7 +63,7 @@ async function getLinks(page) {
 
     await page.evaluate((scrollHeight, divSelector) => document.querySelector(divSelector).scrollTo(0, scrollHeight), scrollHeight, divSelector);
 
-    await page.waitForTimeout(defaultDelay);
+    await page.waitForTimeout(defaultDelay * 7);
 
     newScrollHeight = await page.$eval(divSelector, (div) => div.scrollHeight);
     debug.log("scrolled by", newScrollHeight);
@@ -82,11 +88,11 @@ async function getLinks(page) {
   return searchResults;
 }
 
-async function isNextButtonDisabled(page) {
-  const state = await page.$eval('button[aria-label=" Next page "]', (button) => (button.getAttribute("disabled") ? true : false));
-  debug.log("We are", state ? " at the end of the pages" : "not at the end of the pages");
-  return state;
-}
+// async function isNextButtonDisabled(page) {
+//   const state = await page.$eval('button[aria-label=" Next page "]', (button) => (button.getAttribute("disabled") ? true : false));
+//   debug.log("We are", state ? " at the end of the pages" : "not at the end of the pages");
+//   return state;
+// }
 
 function movingOn() {
   debug.log("Wait timed out, moving on...");
@@ -96,7 +102,7 @@ function genericMovingOn() {
   debug.log("Recieved an error, attempting to move on...");
 }
 
-async function main(searchQuery = "food distributors in Chicago") {
+async function main(searchQuery = "flower shop in Ellicott City Maryland") {
   const browser = await puppeteer.launch({
     headless: false,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -113,40 +119,40 @@ async function main(searchQuery = "food distributors in Chicago") {
 
   let allLinks = [];
 
-  let isDisabled;
+  //   let isDisabled;
+
+  //   try {
+  //     isDisabled = await isNextButtonDisabled(page);
+  //   } catch (e) {
+  //     genericMovingOn();
+  //   }
+
+  //   while (!isDisabled) {
+  // If it hasn't go to the next page
 
   try {
-    isDisabled = await isNextButtonDisabled(page);
+    const links = await getLinks(page);
+    allLinks.push(...links);
+    // await page.$eval('button[aria-label=" Next page "]', (element) => element.click());
+    // debug.log("moving to the next page");
   } catch (e) {
     genericMovingOn();
   }
 
-  while (!isDisabled) {
-    // If it hasn't go to the next page
+  // try {
+  //   isDisabled = await isNextButtonDisabled(page);
+  // } catch (e) {
+  //   genericMovingOn();
+  // }
 
-    try {
-      const links = await getLinks(page);
-      allLinks.push(...links);
-      await page.$eval('button[aria-label=" Next page "]', (element) => element.click());
-      debug.log("moving to the next page");
-    } catch (e) {
-      genericMovingOn();
-    }
+  // if (isDisabled) break;
 
-    try {
-      isDisabled = await isNextButtonDisabled(page);
-    } catch (e) {
-      genericMovingOn();
-    }
-
-    if (isDisabled) break;
-
-    try {
-      await page.waitForNavigation({ waitUntil: "domcontentloaded" });
-    } catch (e) {
-      movingOn();
-    }
-  }
+  // try {
+  //   await page.waitForNavigation({ waitUntil: "domcontentloaded" });
+  // } catch (e) {
+  //   movingOn();
+  // }
+  //   }
 
   allLinks = Array.from(new Set(allLinks));
 
@@ -164,12 +170,12 @@ async function main(searchQuery = "food distributors in Chicago") {
     }
   }
 
-  scrapedData = scrapedData.filter(Boolean)
+  scrapedData = scrapedData.filter(Boolean);
 
   const wb = xlsx.utils.book_new();
   const ws = xlsx.utils.json_to_sheet(scrapedData);
-  xlsx.utils.book_append_sheet(wb,ws), {origin: -1};
-  xlsx.writeFile(wb,"food.xlsx");
+  xlsx.utils.book_append_sheet(wb, ws), { origin: -1 };
+  xlsx.writeFile(wb, "Ellicott City.xlsx");
 
   console.log(scrapedData);
   debug.log("Scrape complete!");
